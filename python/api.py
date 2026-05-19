@@ -18,6 +18,7 @@ from chatgpt_music_assistant import (  # noqa: E402
     interpret_mood_query,
     require_openai_client,
 )
+from recommendation_api import router as recommendation_router  # noqa: E402
 
 
 def parse_allowed_origins() -> list[str]:
@@ -41,6 +42,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(recommendation_router)
 
 
 class RecommendationRequest(BaseModel):
