@@ -72,11 +72,22 @@ class RecommendationRequest(BaseModel):
     )
 
 
+class Coord(BaseModel):
+    valence: float
+    arousal: float
+
+
+class TagCoord(BaseModel):
+    tags: str
+    coord: Coord
+
+
 class MoodAnalysis(BaseModel):
     valence: float
     arousal: float
     reason: str
     search_tags: list[str]
+    tags_coord: list[TagCoord]
 
 
 class RecommendedSong(BaseModel):

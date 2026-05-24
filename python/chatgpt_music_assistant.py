@@ -127,6 +127,35 @@ def clamp_score(value: float) -> float:
     return max(-1.0, min(1.0, value))
 
 
+def normalize_tags_coord(payload: dict[str, Any]) -> None:
+    coord_by_tag = {
+        item["tags"]: item["coord"]
+        for item in payload.get("tags_coord", [])
+        if isinstance(item, dict) and "tags" in item and "coord" in item
+    }
+
+    normalized_coords = []
+    for tag in payload["search_tags"]:
+        raw_coord = coord_by_tag.get(tag, {})
+        normalized_coords.append(
+            {
+                "tags": tag,
+                "coord": {
+                    "valence": round(
+                        clamp_score(float(raw_coord.get("valence", payload["valence"]))),
+                        4,
+                    ),
+                    "arousal": round(
+                        clamp_score(float(raw_coord.get("arousal", payload["arousal"]))),
+                        4,
+                    ),
+                },
+            }
+        )
+
+    payload["tags_coord"] = normalized_coords
+
+
 def analyze_lyrics_with_openai(client: OpenAI, lyrics: str, model: str) -> dict[str, Any]:
     schema = {
         "type": "object",
@@ -195,8 +224,38 @@ def interpret_mood_query(client: OpenAI, query: str, model: str) -> dict[str, An
                 "minItems": 2,
                 "maxItems": 6,
             },
+            "tags_coord": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "tags": {"type": "string"},
+                        "coord": {
+                            "type": "object",
+                            "properties": {
+                                "valence": {
+                                    "type": "number",
+                                    "minimum": -1,
+                                    "maximum": 1,
+                                },
+                                "arousal": {
+                                    "type": "number",
+                                    "minimum": -1,
+                                    "maximum": 1,
+                                },
+                            },
+                            "required": ["valence", "arousal"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "required": ["tags", "coord"],
+                    "additionalProperties": False,
+                },
+                "minItems": 2,
+                "maxItems": 6,
+            },
         },
-        "required": ["valence", "arousal", "reason", "search_tags"],
+        "required": ["valence", "arousal", "reason", "search_tags", "tags_coord"],
         "additionalProperties": False,
     }
 
@@ -204,6 +263,8 @@ def interpret_mood_query(client: OpenAI, query: str, model: str) -> dict[str, An
         "Convert the user's music mood request into a target valence/arousal point.\n"
         "Return valence and arousal as real numbers from -1.0 to 1.0.\n"
         "Also return a short Korean reason and a few concise search tags.\n"
+        "Also return tags_coord with one coordinate for each search_tags item, "
+        "using the same tag text and order.\n"
         "Interpret the request in terms of musical feeling, energy, and emotional tone.\n\n"
         f"User request:\n{query}"
     )
@@ -216,6 +277,7 @@ def interpret_mood_query(client: OpenAI, query: str, model: str) -> dict[str, An
     payload = parse_json_response(response.output_text)
     payload["valence"] = round(clamp_score(float(payload["valence"])), 4)
     payload["arousal"] = round(clamp_score(float(payload["arousal"])), 4)
+    normalize_tags_coord(payload)
     return payload
 
 
@@ -292,6 +354,12 @@ def print_recommendations(mood: dict[str, Any], songs: list[dict[str, Any]]) -> 
     print(f"Target Arousal : {mood['arousal']}")
     print(f"Reason         : {mood['reason']}")
     print(f"Tags           : {', '.join(mood['search_tags'])}")
+    print("Tags Coord     :")
+    for item in mood["tags_coord"]:
+        print(
+            f"  - {item['tags']}: "
+            f"valence={item['coord']['valence']}, arousal={item['coord']['arousal']}"
+        )
     print()
     print("=== Recommended Songs ===")
 
