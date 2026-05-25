@@ -208,18 +208,76 @@ exports.recommendByText = async (req, res) => {
         const result = await response.json();
 
         console.log(result);
+        // console.log(result.mood.tags_coord);
+
         res.json({
             success: true,
             query: result.query,
             mood: result.mood,
             data: result.songs || [],
         });
+
     } catch (error) {
         console.error(error);
 
         res.status(500).json({
             success: false,
             message: "AI 추천 서버 호출 실패",
+        });
+    }
+};
+
+//GPT 결과로 Tags 좌표 기반 재생목록
+// 태그 좌표 기반 재생목록 추천
+exports.recommendByCoord = async (req, res) => {
+    try {
+        const { valence, arousal, limit = 15 } = req.body;
+
+        const x = Number(valence);
+        const y = Number(arousal);
+        const safeLimit = Number(limit) || 5;
+
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+            return res.status(400).json({
+                success: false,
+                message: "valence, arousal 감정 좌표가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            SELECT
+                s.song_id,
+                s.title,
+                s.artist_id,
+                a.artist_name,
+                ST_X(s.russell_pt) AS valence,
+                ST_Y(s.russell_pt) AS arousal,
+                s.root_note,
+                s.scale,
+                ST_Distance(s.russell_pt, POINT(?, ?)) AS distance
+            FROM songs_pop s
+            LEFT JOIN artists a ON s.artist_id = a.artist_id
+            WHERE s.russell_pt IS NOT NULL
+            ORDER BY distance ASC
+            LIMIT ?
+        `;
+
+        const [rows] = await db.execute(sql, [x, y, safeLimit]);
+
+        res.json({
+            success: true,
+            coord: {
+                valence: x,
+                arousal: y,
+            },
+            data: rows,
+        });
+    } catch (error) {
+        console.error("좌표 기반 재생목록 추천 실패:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "좌표 기반 재생목록 추천 실패",
         });
     }
 };
