@@ -1,5 +1,36 @@
 const express = require("express");
+const db = require("../config/db");
+const bcrypt = require("bcryptjs");
+
+
 const router = express.Router();
+
+async function findOrCreateSocialMember({ provider, userId, nickname }) {
+    const [rows] = await db.execute(
+        "SELECT * FROM member WHERE provider = ? AND user_id = ? LIMIT 1",
+        [provider, userId]
+    );
+
+    if (rows.length > 0) {
+        return rows[0];
+    }
+
+    const passwordHash = await bcrypt.hash(`${provider}:${userId}`, 10);
+
+    const [result] = await db.execute(
+        `INSERT INTO member (user_id, user_pw, nickname, provider, role)
+         VALUES (?, ?, ?, ?, 'USER')`,
+        [userId, passwordHash, nickname, provider]
+    );
+
+    return {
+        user_no: result.insertId,
+        user_id: userId,
+        nickname,
+        provider,
+        role: "USER",
+    };
+}
 
 router.get("/kakao", (req, res) => {
     const kakaoAuthUrl = "https://kauth.kakao.com/oauth/authorize";
@@ -66,6 +97,14 @@ router.get("/kakao/callback", async (req, res) => {
 
         console.log("Kakao user data:", kakaoUser);
 
+        const member = await findOrCreateSocialMember({
+            provider: "kakao",
+            userId: String(kakaoUser.id),
+            nickname: kakaoUser.properties?.nickname || kakaoUser.kakao_account?.profile?.nickname || "카카오사용자",
+        });
+
+        console.log("Logged in member:", member);
+
         res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/`);
     } catch (error) {
         console.error("Kakao token error:", error);
@@ -112,6 +151,14 @@ router.get("/naver/callback", async (req, res) => {
         const naverUser = await userResponse.json();
 
         console.log("Naver user data:", naverUser);
+
+        const member = await findOrCreateSocialMember({
+            provider: "naver",
+            userId: String(naverUser.response.id),
+            nickname: naverUser.response.nickname || naverUser.response.name || "네이버사용자",
+        });
+
+        console.log("Logged in member:", member);
 
         res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/`);
     } catch (error) {
