@@ -5,11 +5,11 @@ export default function LoginPage() {
     const navigate = useNavigate();
 
     const handleKakaoLogin = () => {
-        console.log('Kakao login');
+        window.location.href = 'http://localhost:4000/api/auth/kakao';
     };
 
     const handleNaverLogin = () => {
-        console.log('Naver login');
+        window.location.href = 'http://localhost:4000/api/auth/naver';
     };
 
     return (
