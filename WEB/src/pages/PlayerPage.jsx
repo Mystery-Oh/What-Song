@@ -1,25 +1,41 @@
 import './PlayerPage.css';
-import { useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate  } from "react-router-dom";
 import EmotionMapModal from "../components/EmotionMapModal";
 
 export default function PlayerPage() {
+
     const [isSpecOpen, setIsSpecOpen] = useState(false);
     const [isEmotionOpen, setIsEmotionOpen] = useState(false);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [youtubeMap, setYoutubeMap] = useState({});
+    const [isPlaying, setIsPlaying] = useState(false);
+
+    const playerRef = useRef(null);
+    const playerContainerRef = useRef(null);
 
     const location = useLocation();
+    const navigate = useNavigate();
 
     const mood = location.state?.mood;
     const keyword = location.state?.keyword || mood?.label || "설렘";
     const playlist = location.state?.playlist || [];
-    const selectedSong = location.state?.selectedSong || playlist[0];
+
+    const getSongId = (song, index) => {
+        return song.song_id ?? song.id ?? `${song.title}-${song.artist_name}-${index}`;
+    };
+
+    const selectedSong =
+        playlist[currentIndex] ||
+        location.state?.selectedSong ||
+        playlist[0];
 
     const currentTrack = selectedSong
         ? {
-            id: selectedSong.song_id,
+            id: getSongId(selectedSong, currentIndex),
             title: selectedSong.title,
             artist: selectedSong.artist_name,
-            image: selectedSong.image || `https://picsum.photos/900/900?${selectedSong.song_id}`,
+            image: selectedSong.image || `https://picsum.photos/900/900?${currentIndex}`,
             spectrogramImage: "/spectrograms/spring-in-me.png",
             x: selectedSong.valence * 100,
             y: selectedSong.arousal * 100,
@@ -36,17 +52,103 @@ export default function PlayerPage() {
             mood: keyword,
         };
 
-    const nextTracks = playlist.map((song) => ({
-        id: song.song_id,
-        title: song.title,
-        artist: song.artist_name,
-        duration: "3:30",
-        image: song.image || `https://picsum.photos/80/80?${song.song_id}`,
-        active: song.song_id === currentTrack.id,
-        x: song.valence * 100,
-        y: song.arousal * 100,
-        mood: keyword,
-    }));
+    useEffect(() => {
+        if (!playlist.length) return;
+
+        const fetchTrackThumbnails = async () => {
+            const results = {};
+
+            await Promise.all(
+                playlist.map(async (song, index) => {
+                    try {
+                        const id = getSongId(song, index);
+
+                        const params = new URLSearchParams({
+                            title: song.title,
+                            artist: song.artist_name || "",
+                        });
+
+                        const response = await fetch(
+                            `${import.meta.env.VITE_API_BASE_URL}/api/youtube/search?${params}`
+                        );
+
+                        if (!response.ok) return;
+
+                        const result = await response.json();
+
+                        results[id] = result.data;
+                    } catch (error) {
+                        console.error("YouTube 썸네일 가져오기 실패:", error);
+                    }
+                })
+            );
+
+            setYoutubeMap(results);
+        };
+
+        fetchTrackThumbnails();
+    }, [playlist]);
+
+    const currentYoutube = youtubeMap[currentTrack.id];
+
+    const currentImage =
+        currentYoutube?.thumbnail ||
+        currentTrack.image;
+
+    const currentVideoId = currentYoutube?.videoId;
+
+    const nextTracks = playlist.map((song, index) => {
+        const id = getSongId(song, index);
+        const youtube = youtubeMap[id];
+
+        return {
+            id,
+            title: song.title,
+            artist: song.artist_name,
+            duration: "3:30",
+            image:
+                youtube?.thumbnail ||
+                song.image ||
+                `https://picsum.photos/80/80?${index}`,
+            active: index === currentIndex,
+            x: song.valence * 100,
+            y: song.arousal * 100,
+            mood: keyword,
+            index,
+        };
+    });
+
+    const handlePlayPause = () => {
+        if (!playerRef.current) return;
+
+        if (isPlaying) {
+            playerRef.current.pauseVideo();
+        } else {
+            playerRef.current.playVideo();
+        }
+    };
+
+    const handleNextTrack = () => {
+        if (playlist.length === 0) return;
+
+        setCurrentIndex((prev) => {
+            if (prev >= playlist.length - 1) return 0;
+            return prev + 1;
+        });
+    };
+
+    const handlePrevTrack = () => {
+        if (playlist.length === 0) return;
+
+        setCurrentIndex((prev) => {
+            if (prev <= 0) return playlist.length - 1;
+            return prev - 1;
+        });
+    };
+
+    const handleSelectTrack = (index) => {
+        setCurrentIndex(index);
+    };
 
     const emotionPoints = useMemo(() => {
         return nextTracks.map((track) => ({
@@ -59,8 +161,76 @@ export default function PlayerPage() {
         }));
     }, [nextTracks]);
 
+
+
+    useEffect(() => {
+        if (!currentVideoId) return;
+
+        const createPlayer = () => {
+            if (playerRef.current) {
+                playerRef.current.loadVideoById(currentVideoId);
+                setIsPlaying(false);
+                return;
+            }
+
+            playerRef.current = new window.YT.Player(playerContainerRef.current, {
+                width: "300",
+                height: "200",
+                videoId: currentVideoId,
+                playerVars: {
+                    autoplay: 0,
+                    controls: 0,
+                    playsinline: 1,
+                },
+                events: {
+                    onStateChange: (event) => {
+                        if (event.data === window.YT.PlayerState.PLAYING) {
+                            setIsPlaying(true);
+                        }
+
+                        if (
+                            event.data === window.YT.PlayerState.PAUSED ||
+                            event.data === window.YT.PlayerState.ENDED
+                        ) {
+                            setIsPlaying(false);
+                        }
+
+                        if (event.data === window.YT.PlayerState.ENDED) {
+                            handleNextTrack();
+                        }
+                    },
+                },
+            });
+        };
+
+        if (window.YT && window.YT.Player) {
+            createPlayer();
+        } else {
+            const existingScript = document.querySelector(
+                'script[src="https://www.youtube.com/iframe_api"]'
+            );
+
+            if (!existingScript) {
+                const tag = document.createElement("script");
+                tag.src = "https://www.youtube.com/iframe_api";
+                document.body.appendChild(tag);
+            }
+
+            window.onYouTubeIframeAPIReady = createPlayer;
+        }
+    }, [currentVideoId]);
+
+
+
     return (
         <div className="player-page">
+            <div className="player-page__top-actions">
+                <button
+                    className="player-page__home-btn"
+                    onClick={() => navigate(-1)}>
+                    뒤로
+                </button>
+            </div>
             <div className="player-page__container">
                 <section className="player-main">
                     <div className="player-main__top-tabs">
@@ -71,8 +241,8 @@ export default function PlayerPage() {
                     <div className="player-main__art-card">
                         <div className="player-main__art-frame">
                             <img
-                                src={currentTrack.image}
-                                alt="album art"
+                                src={currentImage}
+                                alt={currentTrack.title}
                                 className="player-main__art-image"
                             />
                         </div>
@@ -88,25 +258,35 @@ export default function PlayerPage() {
                     <p className="player-sidebar__source-label">#{keyword} 감정 재생목록</p>
                     <p className="player-sidebar__source-title">{currentTrack.title}</p>
 
-                    <div className="player-sidebar__filters">
-                        <button className="is-active">All</button>
-                        <button>친숙한 곡</button>
-                        <button>처음 듣는 곡</button>
-                        <button>인기</button>
-                        <button>숨은 명곡</button>
-                    </div>
+                    {/*<div className="player-sidebar__filters">*/}
+                    {/*    <button className="is-active">All</button>*/}
+                    {/*    <button>친숙한 곡</button>*/}
+                    {/*    <button>처음 듣는 곡</button>*/}
+                    {/*    <button>인기</button>*/}
+                    {/*    <button>숨은 명곡</button>*/}
+                    {/*</div>*/}
 
                     <div className="player-sidebar__list">
                         {nextTracks.map((track) => (
                             <div
-                                className={`track-item ${track.active ? 'is-active' : ''}`}
-                                key={`${track.title}-${track.artist}`} >
+                                className={`track-item ${track.active ? "is-active" : ""}`}
+                                key={`${track.id}-${track.title}`}
+                                onClick={() => handleSelectTrack(track.index)}
+                            >
+                                <div className="track-item__cover-wrap">
+                                    <img
+                                        src={track.image}
+                                        alt={track.title}
+                                        className="track-item__cover"
+                                    />
 
-                                <img
-                                    src={currentTrack.image}
-                                    alt="current track"
-                                    className="bottom-player__cover"
-                                />
+                                    {track.active && (
+                                        <span className="track-item__playing-badge">
+                                            재생중
+                                        </span>
+                                    )}
+                                </div>
+
                                 <div className="track-item__meta">
                                     <p className="track-item__title">{track.title}</p>
                                     <p className="track-item__artist">{track.artist}</p>
@@ -121,17 +301,24 @@ export default function PlayerPage() {
 
             <footer className="bottom-player">
                 <div className="bottom-player__left">
-                    <button className="icon-btn">⏮</button>
-                    <button className="icon-btn icon-btn--play">▶</button>
-                    <button className="icon-btn">⏭</button>
+                    <button className="icon-btn" onClick={handlePrevTrack}>⏮</button>
+
+                    <button
+                        className="icon-btn icon-btn--play"
+                        onClick={handlePlayPause}
+                    >
+                        {isPlaying ? "⏸" : "▶"}
+                    </button>
+
+                    <button className="icon-btn" onClick={handleNextTrack}>⏭</button>
 
                     <span className="bottom-player__time">0:01 / 4:31</span>
                 </div>
 
                 <div className="bottom-player__center">
                     <img
-                        src="https://picsum.photos/80/80?10"
-                        alt="current track"
+                        src={currentImage}
+                        alt={currentTrack.title}
                         className="bottom-player__cover"
                     />
 
@@ -174,52 +361,15 @@ export default function PlayerPage() {
                         감정
                     </button>
 
-
-                    <div className="bottom-player__right">
-                        <button className="icon-btn" aria-label="좋아요"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path
-                                    d="M12 21s-6.5-4.35-9-8.28C1.5 9.5 3.24 6 6.5 6c1.86 0 3.06 1.04 3.5 2.09C10.44 7.04 11.64 6 13.5 6 16.76 6 18.5 9.5 17 12.72 14.5 16.65 12 21 12 21z"
-                                    stroke="currentColor"
-                                    strokeWidth="1.6"
-                                />
-                            </svg>
-                        </button>
-
-                        <button className="icon-btn" aria-label="볼륨">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path
-                                    d="M5 9v6h4l5 4V5L9 9H5z"
-                                    stroke="currentColor"
-                                    strokeWidth="1.6"
-                                />
-                                <path
-                                    d="M16 9c1.5 1.5 1.5 4.5 0 6"
-                                    stroke="currentColor"
-                                    strokeWidth="1.6"
-                                />
-                            </svg>
-                        </button>
-
-                        <button className="icon-btn" aria-label="셔플">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path
-                                    d="M4 4h4l8 16h4"
-                                    stroke="currentColor"
-                                    strokeWidth="1.6"
-                                />
-                                <path
-                                    d="M20 4l-4 4 4 4"
-                                    stroke="currentColor"
-                                    strokeWidth="1.6"
-                                />
-                            </svg>
-                        </button>
-                    </div>
-
+                    <button className="icon-btn" aria-label="좋아요">♡</button>
+                    <button className="icon-btn" aria-label="볼륨">🔊</button>
+                    <button className="icon-btn" aria-label="셔플">🔀</button>
                 </div>
             </footer>
+
+            <div className="youtube-hidden-player">
+                <div ref={playerContainerRef} />
+            </div>
 
             {isSpecOpen && (
                 <div className="spec-modal" onClick={() => setIsSpecOpen(false)}>

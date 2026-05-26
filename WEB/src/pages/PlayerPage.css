@@ -705,4 +705,80 @@
     transform: translateY(-1px);
 }
 
+.youtube-hidden-player {
+    position: fixed;
+    left: -9999px;
+    top: -9999px;
+    width: 300px;
+    height: 200px;
+    opacity: 0;
+    pointer-events: none;
+}
 
+.track-item {
+    cursor: pointer;
+    position: relative;
+}
+
+.track-item.is-active {
+    background: rgba(255, 255, 255, 0.12);
+    border-left: 4px solid #6c8cff;
+}
+
+.track-item__cover-wrap {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+}
+
+.track-item__cover {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+    object-fit: cover;
+}
+
+.track-item__playing-badge {
+    position: absolute;
+    left: 50%;
+    bottom: -7px;
+    transform: translateX(-50%);
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #6c8cff;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/*상단 버튼 */
+.player-page__top-actions {
+    position: fixed;
+    top: 28px;
+    right: 48px;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.player-page__home-btn {
+    height: 48px;
+    padding: 0 24px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.75);
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.player-page__home-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: #fff;
+    transform: translateY(-1px);
+}

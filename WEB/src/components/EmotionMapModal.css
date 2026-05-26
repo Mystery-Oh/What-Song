@@ -183,11 +183,35 @@
     color: #fff;
 }
 
+/*.emotion-track-list {*/
+/*    display: flex;*/
+/*    flex-direction: column;*/
+/*    gap: 10px;*/
+/*}*/
 .emotion-track-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
+
+    max-height: 520px;
+    overflow-y: auto;
+
+    padding-right: 6px;
 }
+.emotion-track-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.emotion-track-list::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.04);
+    border-radius: 999px;
+}
+
+.emotion-track-list::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.18);
+    border-radius: 999px;
+}
+
 
 .emotion-track-item {
     width: 100%;

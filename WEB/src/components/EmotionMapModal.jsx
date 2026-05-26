@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./EmotionMapModal.css";
 
 function quadrantLabel(x, y) {
@@ -355,6 +355,7 @@ export default function EmotionMapModal({
                                         }) {
     const [selectedPoint, setSelectedPoint] = useState(null);
     const [hoveredPoint, setHoveredPoint] = useState(null);
+    const trackItemRefs = useRef({});
 
     useEffect(() => {
         if (tracks?.length) {
@@ -365,6 +366,19 @@ export default function EmotionMapModal({
         setHoveredPoint(null);
     }, [tracks, open]);
 
+    useEffect(() => {
+        if (!selectedPoint?.id) return;
+
+        const target = trackItemRefs.current[selectedPoint.id];
+
+        if (target) {
+            target.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+        }
+    }, [selectedPoint]);
+
     const nearestTracks = useMemo(() => {
         if (!searchedTrack || !tracks?.length) return [];
 
@@ -374,7 +388,7 @@ export default function EmotionMapModal({
                 dist: distance(track, searchedTrack),
             }))
             .sort((a, b) => a.dist - b.dist)
-            .slice(0, 5);
+            // .slice(0, 5);
     }, [tracks, searchedTrack]);
 
     const distributionInfo = useMemo(() => {
@@ -413,14 +427,14 @@ export default function EmotionMapModal({
                 </div>
 
                 <div className="emotion-modal-body">
-                    <div className="emotion-top-box">
-                        <p className="emotion-top-badge">뮤직조아 · 감정 기반 추천 시각화</p>
-                        <h3>검색곡의 위치와 다른 곡들의 분포를 함께 보여주는 UI</h3>
-                        <p className="emotion-top-desc">
-                            검색곡은 시안색으로 고정 표시되고, 다른 곡은 hover 시 말풍선이 뜨며
-                            클릭하면 보라색으로 선택 상태가 유지됩니다.
-                        </p>
-                    </div>
+                    {/*<div className="emotion-top-box">*/}
+                    {/*    <p className="emotion-top-badge">뮤직조아 · 감정 기반 추천 시각화</p>*/}
+                    {/*    <h3>검색곡의 위치와 다른 곡들의 분포를 함께 보여주는 UI</h3>*/}
+                    {/*    <p className="emotion-top-desc">*/}
+                    {/*        검색곡은 시안색으로 고정 표시되고, 다른 곡은 hover 시 말풍선이 뜨며*/}
+                    {/*        클릭하면 보라색으로 선택 상태가 유지됩니다.*/}
+                    {/*    </p>*/}
+                    {/*</div>*/}
 
                     <div className="emotion-layout">
                         <EmotionCircle
@@ -472,7 +486,10 @@ export default function EmotionMapModal({
                                 <div className="emotion-track-list">
                                     {nearestTracks.map((track, index) => (
                                         <button
-                                            key={track.id}
+                                            key={`${track.id}-${index}`}
+                                            ref={(el) => {
+                                                if (el) trackItemRefs.current[track.id] = el;
+                                            }}
                                             className={`emotion-track-item ${
                                                 selectedPoint?.id === track.id ? "active" : ""
                                             }`}
