@@ -263,6 +263,7 @@ def interpret_mood_query(client: OpenAI, query: str, model: str) -> dict[str, An
         "Convert the user's music mood request into a target valence/arousal point.\n"
         "Return valence and arousal as real numbers from -1.0 to 1.0.\n"
         "Also return a short Korean reason and a few concise search tags.\n"
+        "Tag must be a korean word.\n"
         "Also return tags_coord with one coordinate for each search_tags item, "
         "using the same tag text and order.\n"
         "Interpret the request in terms of musical feeling, energy, and emotional tone.\n\n"
