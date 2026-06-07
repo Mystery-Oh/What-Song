@@ -1,26 +1,73 @@
 import './MyPage.css';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getCurrentUserNo } from '../utils/auth';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function MyPage() {
     const navigate = useNavigate();
 
-    const recentTracks = [
-        { title: 'Retro Tape', image: 'https://picsum.photos/260/180?1', active: true },
-        { title: 'Green Cassette', image: 'https://picsum.photos/260/180?2' },
-        { title: 'Coastal Serenity', image: 'https://picsum.photos/260/180?3' },
-        { title: 'Blue Eye', image: 'https://picsum.photos/260/180?4' },
-        { title: 'Midnight Chill', image: 'https://picsum.photos/260/180?5' },
-        { title: 'City Mood', image: 'https://picsum.photos/260/180?6' },
-    ];
+    const [recentTracks, setRecentTracks] = useState([]);
+    const [likedTracks, setLikedTracks] = useState([]);
 
-    const likedTracks = [
-        { title: 'Orchestra Melody', image: 'https://picsum.photos/260/180?7', active: true },
-        { title: 'DNA Pulse', image: 'https://picsum.photos/260/180?8' },
-        { title: 'Happy Friends', image: 'https://picsum.photos/260/180?9' },
-        { title: 'Alpine Whispers', image: 'https://picsum.photos/260/180?10' },
-        { title: 'Cosmic Journey', image: 'https://picsum.photos/260/180?11' },
-        { title: 'Morning Fog', image: 'https://picsum.photos/260/180?12' },
-    ];
+    useEffect(() => {
+        const fetchMyTracks = async () => {
+            try {
+                const userNo = getCurrentUserNo();
+
+                const [recentRes, likedRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/songs/play-history/user/${userNo}?limit=6`),
+                    fetch(`${API_BASE_URL}/api/songs/likes/user/${userNo}?limit=6`),
+                ]);
+
+                const recentResult = await recentRes.json();
+                const likedResult = await likedRes.json();
+
+                setRecentTracks(recentResult.data || []);
+                setLikedTracks(likedResult.data || []);
+            } catch (error) {
+                console.error('마이페이지 곡 조회 실패:', error);
+            }
+        };
+
+        fetchMyTracks();
+    }, []);
+
+
+    const handleTrackClick = (track, index, tracks, title) => {
+        navigate('/player', {
+            state: {
+                type: 'playlist',
+                keyword: title,
+                playlistTitle: title,
+                playlist: tracks,
+                selectedSong: track,
+                selectedIndex: index,
+            },
+        });
+    };
+
+
+    const renderTrackRow = (tracks, emptyMessage, title) => {
+        if (!tracks.length) {
+            return <p className="mypage-empty-text">{emptyMessage}</p>;
+        }
+
+        return tracks.map((track, index) => (
+            <div
+                className={`mypage-track-item ${index === 0 ? 'is-active' : ''}`}
+                key={`${track.song_id}-${index}`}
+                onClick={() => handleTrackClick(track, index, tracks, title)}
+            >
+                <div className="mypage-track-card">
+                    <div className="mypage-track-placeholder">♪</div>
+                </div>
+
+                <p className="mypage-track-title">{track.title}</p>
+            </div>
+        ));
+    };
 
     return (
         <div className="mypage">
@@ -30,17 +77,27 @@ export default function MyPage() {
                         <span className="mypage-create-btn__icon">+</span>
                         <span>나만의 플레이 만들기</span>
                     </button>
-                    <button className="mypage-home-btn" onClick={() => navigate('/')}>검색 홈</button>
+
+                    <button
+                        className="mypage-home-btn"
+                        onClick={() => navigate('/')}
+                    >
+                        검색 홈
+                    </button>
                 </div>
 
                 <section className="mypage-section">
                     <div className="mypage-section__header">
                         <h2>최근 들은 곡</h2>
+
                         <button
                             className="mypage-section__more"
                             onClick={() =>
                                 navigate('/track-list', {
-                                    state: { type: 'recent', title: '최근 들은 곡' },
+                                    state: {
+                                        type: 'recent',
+                                        title: '최근 들은 곡',
+                                    },
                                 })
                             }
                         >
@@ -49,28 +106,26 @@ export default function MyPage() {
                     </div>
 
                     <div className="mypage-track-row">
-                        {recentTracks.map((track) => (
-                            <div
-                                className={`mypage-track-item ${track.active ? 'is-active' : ''}`}
-                                key={track.title}
-                            >
-                                <div className="mypage-track-card">
-                                    <img src={track.image} alt={track.title} />
-                                </div>
-                                <p className="mypage-track-title">{track.title}</p>
-                            </div>
-                        ))}
+                        {renderTrackRow(
+                            recentTracks,
+                            '아직 들은 곡이 없어요.',
+                            '최근 들은 곡'
+                        )}
                     </div>
                 </section>
 
                 <section className="mypage-section">
                     <div className="mypage-section__header">
                         <h2>좋아요 곡</h2>
+
                         <button
                             className="mypage-section__more"
                             onClick={() =>
                                 navigate('/track-list', {
-                                    state: { type: 'liked', title: '좋아요 곡' },
+                                    state: {
+                                        type: 'liked',
+                                        title: '좋아요 곡',
+                                    },
                                 })
                             }
                         >
@@ -79,17 +134,11 @@ export default function MyPage() {
                     </div>
 
                     <div className="mypage-track-row">
-                        {likedTracks.map((track) => (
-                            <div
-                                className={`mypage-track-item ${track.active ? 'is-active' : ''}`}
-                                key={track.title}
-                            >
-                                <div className="mypage-track-card">
-                                    <img src={track.image} alt={track.title} />
-                                </div>
-                                <p className="mypage-track-title">{track.title}</p>
-                            </div>
-                        ))}
+                        {renderTrackRow(
+                            likedTracks,
+                            '아직 좋아요한 곡이 없어요.',
+                            '좋아요 곡'
+                        )}
                     </div>
                 </section>
             </div>

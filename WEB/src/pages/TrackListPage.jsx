@@ -1,5 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './TrackListPage.css';
+import { getCurrentUserNo } from '../utils/auth';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export default function TrackListPage() {
     const navigate = useNavigate();
@@ -8,51 +12,100 @@ export default function TrackListPage() {
     const pageTitle = location.state?.title || '트랙 목록';
     const type = location.state?.type || 'recent';
 
-    const recentTracks = [
-        { title: 'Song A', artist: 'Artist', duration: '03:49', image: 'https://picsum.photos/120/80?1' },
-        { title: 'Song B', artist: 'Artist', duration: '04:21', image: 'https://picsum.photos/120/80?2' },
-        { title: 'Song C', artist: 'Artist', duration: '02:55', image: 'https://picsum.photos/120/80?3' },
-        { title: 'Song D', artist: 'Artist', duration: '04:30', image: 'https://picsum.photos/120/80?4' },
-        { title: 'Song E', artist: 'Artist', duration: '03:20', image: 'https://picsum.photos/120/80?5' },
-    ];
+    const [tracks, setTracks] = useState([]);
 
-    const likedTracks = [
-        { title: 'Like A', artist: 'Artist', duration: '03:11', image: 'https://picsum.photos/120/80?6' },
-        { title: 'Like B', artist: 'Artist', duration: '04:02', image: 'https://picsum.photos/120/80?7' },
-        { title: 'Like C', artist: 'Artist', duration: '02:48', image: 'https://picsum.photos/120/80?8' },
-        { title: 'Like D', artist: 'Artist', duration: '05:10', image: 'https://picsum.photos/120/80?9' },
-        { title: 'Like E', artist: 'Artist', duration: '03:58', image: 'https://picsum.photos/120/80?10' },
-    ];
+    useEffect(() => {
+        const fetchTracks = async () => {
+            try {
+                const userNo = getCurrentUserNo();
 
-    const tracks = type === 'liked' ? likedTracks : recentTracks;
+                const url =
+                    type === 'liked'
+                        ? `${API_BASE_URL}/api/songs/likes/user/${userNo}`
+                        : `${API_BASE_URL}/api/songs/play-history/user/${userNo}`;
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                setTracks(result.data || []);
+            } catch (error) {
+                console.error('트랙 목록 조회 실패:', error);
+            }
+        };
+
+        fetchTracks();
+    }, [type]);
+
+    const formatDuration = (seconds) => {
+        if (!seconds) return '--:--';
+
+        const min = Math.floor(seconds / 60);
+        const sec = seconds % 60;
+
+        return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    };
+
+    const handleTrackClick = (track, index) => {
+        navigate('/player', {
+            state: {
+                type: 'playlist',
+                keyword: pageTitle,
+                playlistTitle: pageTitle,
+                playlist: tracks,
+                selectedSong: track,
+                selectedIndex: index,
+            },
+        });
+    };
 
     return (
         <div className="track-list-page">
-
             <div className="track-list-page__container">
                 <h1 className="track-list-page__title">{pageTitle}</h1>
-                {/*<button className="track-list-page__back" onClick={() => navigate(-1)}>*/}
-                {/*    ← 뒤로*/}
-                {/*</button>*/}
-                <div className="track-list">
-                    {tracks.map((track) => (
-                        <div className="track-row" key={`${track.title}-${track.duration}`}>
-                            <img src={track.image} alt={track.title} className="track-row__cover" />
 
-                            <div className="track-row__meta">
-                                <p className="track-row__title">{track.title}</p>
-                                <p className="track-row__artist">{track.artist}</p>
+                <div className="track-list">
+                    {tracks.map((track, index) => (
+                        <div
+                            className="track-row"
+                            key={`${track.song_id}-${index}`}
+                            onClick={() => handleTrackClick(track, index)}
+                        >
+                            <div className="track-row__cover-placeholder">
+                                ♪
                             </div>
 
-                            <span className="track-row__duration">{track.duration}</span>
+                            <div className="track-row__meta">
+                                <p className="track-row__title">
+                                    {track.title}
+                                </p>
+
+                                <p className="track-row__artist">
+                                    {track.artist_name || '-'}
+                                </p>
+                            </div>
+
+                            <span className="track-row__duration">
+                                {formatDuration(
+                                    track.played_seconds ||
+                                    track.duration_seconds
+                                )}
+                            </span>
                         </div>
                     ))}
 
-                    <div className="track-list__load-hint">
-                        <div className="track-list__load-dot"></div>
-                        <div className="track-list__load-bar"></div>
-                        <span>아래로 내려 더 많은 곡 보기</span>
-                    </div>
+                    {tracks.length === 0 && (
+                        <p className="track-list__empty">
+                            아직 표시할 곡이 없습니다.
+                        </p>
+                    )}
+
+                    {tracks.length > 0 && (
+                        <div className="track-list__load-hint">
+                            <div className="track-list__load-dot"></div>
+                            <div className="track-list__load-bar"></div>
+                            <span>아래로 내려 더 많은 곡 보기</span>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

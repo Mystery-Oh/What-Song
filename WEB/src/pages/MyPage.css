@@ -222,3 +222,41 @@
         font-size: 14px;
     }
 }
+
+.mypage-track-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.06);
+    color: #9cff7a;
+    font-size: 42px;
+    font-weight: 900;
+}
+
+.mypage-empty-text {
+    color: rgba(255,255,255,0.55);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.mypage-track-row {
+    overflow: visible;
+    padding: 10px 8px 18px;
+}
+
+.mypage-track-item {
+    cursor: pointer;
+    overflow: visible;
+}
+
+.mypage-track-card {
+    overflow: visible;
+}
+
+.mypage-track-card:hover {
+    transform: translateY(-3px);
+    border-color: #9cff7a;
+    box-shadow: 0 0 22px rgba(156, 255, 122, 0.45);
+}

@@ -2,8 +2,12 @@ import './PlayerPage.css';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate  } from "react-router-dom";
 import EmotionMapModal from "../components/EmotionMapModal";
+import { getCurrentUserNo } from "../utils/auth";
 
 export default function PlayerPage() {
+
+    const location = useLocation();
+    const navigate = useNavigate();
 
     const [isSpecOpen, setIsSpecOpen] = useState(false);
     const [isEmotionOpen, setIsEmotionOpen] = useState(false);
@@ -14,8 +18,11 @@ export default function PlayerPage() {
     const playerRef = useRef(null);
     const playerContainerRef = useRef(null);
 
-    const location = useLocation();
-    const navigate = useNavigate();
+    const playHistoryIdRef = useRef(null);
+    const currentSongIdRef = useRef(null);
+
+
+
 
     const mood = location.state?.mood;
     const keyword = location.state?.keyword || mood?.label || "설렘";
@@ -51,6 +58,22 @@ export default function PlayerPage() {
             y: 0,
             mood: keyword,
         };
+
+
+    useEffect(() => {
+        if (!location.state?.selectedSong) return;
+
+        const index = playlist.findIndex(
+            song =>
+                String(song.song_id) ===
+                String(location.state.selectedSong.song_id)
+        );
+
+        if (index >= 0) {
+            setCurrentIndex(index);
+        }
+    }, [playlist]);
+
 
     useEffect(() => {
         if (!playlist.length) return;
@@ -118,6 +141,77 @@ export default function PlayerPage() {
         };
     });
 
+    //좋아요
+    const [isLiked, setIsLiked] = useState(false);
+    const [likeLoading, setLikeLoading] = useState(false);
+
+    useEffect(() => {
+        if (!currentTrack?.id || currentTrack.id === 999) return;
+
+        const fetchLikeStatus = async () => {
+            try {
+                const userNo = getCurrentUserNo();
+
+                const response = await fetch(
+                    `${import.meta.env.VITE_API_BASE_URL}/api/songs/${currentTrack.id}/like?user_no=${userNo}`
+                );
+
+                if (!response.ok) {
+                    setIsLiked(false);
+                    return;
+                }
+
+                const result = await response.json();
+                setIsLiked(result.liked);
+            } catch (error) {
+                console.error("좋아요 상태 조회 실패:", error);
+                setIsLiked(false);
+            }
+        };
+
+        fetchLikeStatus();
+    }, [currentTrack.id]);
+
+    //좋아요 토글
+    const handleToggleLike = async () => {
+        if (!currentTrack?.id || currentTrack.id === 999) return;
+        if (likeLoading) return;
+
+        try {
+            setLikeLoading(true);
+
+            const userNo = getCurrentUserNo();
+
+            const response = await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/api/songs/${currentTrack.id}/like`,
+                {
+                    method: isLiked ? "DELETE" : "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        user_no: userNo,
+                    }),
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error("좋아요 처리 실패");
+            }
+
+            const result = await response.json();
+            setIsLiked(result.liked);
+        } catch (error) {
+            console.error("좋아요 처리 실패:", error);
+        } finally {
+            setLikeLoading(false);
+        }
+    };
+
+
+
+
+
     const handlePlayPause = () => {
         if (!playerRef.current) return;
 
@@ -128,8 +222,10 @@ export default function PlayerPage() {
         }
     };
 
-    const handleNextTrack = () => {
+    const handleNextTrack = async () => {
         if (playlist.length === 0) return;
+
+        await endPlayHistory();
 
         setCurrentIndex((prev) => {
             if (prev >= playlist.length - 1) return 0;
@@ -137,8 +233,10 @@ export default function PlayerPage() {
         });
     };
 
-    const handlePrevTrack = () => {
+    const handlePrevTrack = async () => {
         if (playlist.length === 0) return;
+
+        await endPlayHistory();
 
         setCurrentIndex((prev) => {
             if (prev <= 0) return playlist.length - 1;
@@ -146,7 +244,8 @@ export default function PlayerPage() {
         });
     };
 
-    const handleSelectTrack = (index) => {
+    const handleSelectTrack = async (index) => {
+        await endPlayHistory();
         setCurrentIndex(index);
     };
 
@@ -167,7 +266,10 @@ export default function PlayerPage() {
         if (!currentVideoId) return;
 
         const createPlayer = () => {
-            if (playerRef.current) {
+            if (
+                playerRef.current &&
+                typeof playerRef.current.loadVideoById === "function"
+            ) {
                 playerRef.current.loadVideoById(currentVideoId);
                 setIsPlaying(false);
                 return;
@@ -186,16 +288,19 @@ export default function PlayerPage() {
                     onStateChange: (event) => {
                         if (event.data === window.YT.PlayerState.PLAYING) {
                             setIsPlaying(true);
+
+                            if (!playHistoryIdRef.current) {
+                                startPlayHistory();
+                            }
                         }
 
-                        if (
-                            event.data === window.YT.PlayerState.PAUSED ||
-                            event.data === window.YT.PlayerState.ENDED
-                        ) {
+                        if (event.data === window.YT.PlayerState.PAUSED) {
                             setIsPlaying(false);
                         }
 
                         if (event.data === window.YT.PlayerState.ENDED) {
+                            setIsPlaying(false);
+                            endPlayHistory();
                             handleNextTrack();
                         }
                     },
@@ -220,6 +325,82 @@ export default function PlayerPage() {
         }
     }, [currentVideoId]);
 
+    //재생기록용
+    const startPlayHistory = async () => {
+        console.log("startPlayHistory 호출");
+
+        if (!currentTrack?.id || currentTrack.id === 999) return;
+        if (playHistoryIdRef.current) return;
+
+        try {
+            const durationSeconds = playerRef.current?.getDuration
+                ? Math.floor(playerRef.current.getDuration())
+                : null;
+
+            const response = await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/api/songs/${currentTrack.id}/play/start`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        user_no: getCurrentUserNo(),
+                        duration_seconds: durationSeconds,
+                    }),
+                }
+            );
+
+            const result = await response.json();
+
+            if (result.success) {
+                playHistoryIdRef.current = result.history_id;
+                currentSongIdRef.current = currentTrack.id;
+            }
+        } catch (error) {
+            console.error("재생 시작 기록 실패:", error);
+        }
+    };
+
+    const endPlayHistory = async () => {
+        if (!playHistoryIdRef.current) return;
+
+        try {
+            const playedSeconds = playerRef.current?.getCurrentTime
+                ? Math.floor(playerRef.current.getCurrentTime())
+                : 0;
+
+            const durationSeconds = playerRef.current?.getDuration
+                ? Math.floor(playerRef.current.getDuration())
+                : null;
+
+            await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/api/songs/play-history/${playHistoryIdRef.current}/end`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        played_seconds: playedSeconds,
+                        duration_seconds: durationSeconds,
+                    }),
+                }
+            );
+        } catch (error) {
+            console.error("재생 종료 기록 실패:", error);
+        } finally {
+            playHistoryIdRef.current = null;
+            currentSongIdRef.current = null;
+        }
+    };
+
+    //페이지 나가도 기록되게
+    useEffect(() => {
+        return () => {
+            endPlayHistory();
+        };
+    }, []);
 
 
     return (
@@ -361,7 +542,15 @@ export default function PlayerPage() {
                         감정
                     </button>
 
-                    <button className="icon-btn" aria-label="좋아요">♡</button>
+                    <button
+                        className={`icon-btn ${isLiked ? "active" : ""}`}
+                        aria-label={isLiked ? "좋아요 취소" : "좋아요"}
+                        onClick={handleToggleLike}
+                        disabled={likeLoading}
+                    >
+                        {isLiked ? "♥" : "♡"}
+                    </button>
+
                     <button className="icon-btn" aria-label="볼륨">🔊</button>
                     <button className="icon-btn" aria-label="셔플">🔀</button>
                 </div>

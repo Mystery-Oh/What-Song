@@ -207,7 +207,7 @@ exports.recommendByText = async (req, res) => {
 
         const result = await response.json();
 
-        console.log(result);
+        // console.log(result);
         // console.log(result.mood.tags_coord);
 
         res.json({
@@ -278,6 +278,300 @@ exports.recommendByCoord = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "좌표 기반 재생목록 추천 실패",
+        });
+    }
+};
+
+//좋아요기능
+// 좋아요 여부 조회
+exports.getSongLikeStatus = async (req, res) => {
+    try {
+        const { songId } = req.params;
+        const userNo = Number(req.query.user_no);
+
+        if (!userNo || !songId) {
+            return res.status(400).json({
+                success: false,
+                message: "user_no와 song_id가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            SELECT COUNT(*) AS count
+            FROM song_like
+            WHERE user_no = ?
+              AND song_id = ?
+        `;
+
+        const [rows] = await db.execute(sql, [userNo, songId]);
+
+        res.json({
+            success: true,
+            liked: rows[0].count > 0,
+        });
+    } catch (error) {
+        console.error("좋아요 상태 조회 실패:", error);
+        res.status(500).json({
+            success: false,
+            message: "좋아요 상태 조회 실패",
+        });
+    }
+};
+
+// 좋아요 추가
+exports.likeSong = async (req, res) => {
+    try {
+        const { songId } = req.params;
+        const userNo = Number(req.body.user_no);
+
+        if (!userNo || !songId) {
+            return res.status(400).json({
+                success: false,
+                message: "user_no와 song_id가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            INSERT IGNORE INTO song_like (user_no, song_id)
+            VALUES (?, ?)
+        `;
+
+        await db.execute(sql, [userNo, songId]);
+
+        res.json({
+            success: true,
+            liked: true,
+        });
+    } catch (error) {
+        console.error("좋아요 등록 실패:", error);
+        res.status(500).json({
+            success: false,
+            message: "좋아요 등록 실패",
+        });
+    }
+};
+
+// 좋아요 취소
+exports.unlikeSong = async (req, res) => {
+    try {
+        const { songId } = req.params;
+        const userNo = Number(req.body.user_no);
+
+        if (!userNo || !songId) {
+            return res.status(400).json({
+                success: false,
+                message: "user_no와 song_id가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            DELETE FROM song_like
+            WHERE user_no = ?
+              AND song_id = ?
+        `;
+
+        await db.execute(sql, [userNo, songId]);
+
+        res.json({
+            success: true,
+            liked: false,
+        });
+    } catch (error) {
+        console.error("좋아요 취소 실패:", error);
+        res.status(500).json({
+            success: false,
+            message: "좋아요 취소 실패",
+        });
+    }
+};
+
+// 재생 시작 기록
+exports.startPlayHistory = async (req, res) => {
+    try {
+        const { songId } = req.params;
+        const userNo = Number(req.body.user_no);
+        const durationSeconds = req.body.duration_seconds
+            ? Number(req.body.duration_seconds)
+            : null;
+
+        if (!userNo || !songId) {
+            return res.status(400).json({
+                success: false,
+                message: "user_no와 song_id가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            INSERT INTO user_song_play_history (
+                user_no,
+                song_id,
+                duration_seconds,
+                started_at
+            )
+            VALUES (?, ?, ?, NOW())
+        `;
+
+        const [result] = await db.execute(sql, [
+            userNo,
+            Number(songId),
+            durationSeconds,
+        ]);
+
+        res.json({
+            success: true,
+            history_id: result.insertId,
+        });
+    } catch (error) {
+        console.error("재생 시작 기록 실패:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "재생 시작 기록 실패",
+            error: error.message,
+        });
+    }
+};
+
+// 재생 종료 기록
+exports.endPlayHistory = async (req, res) => {
+    try {
+        const { historyId } = req.params;
+        const playedSeconds = Number(req.body.played_seconds) || 0;
+        const durationSeconds = req.body.duration_seconds
+            ? Number(req.body.duration_seconds)
+            : null;
+
+        if (!historyId) {
+            return res.status(400).json({
+                success: false,
+                message: "history_id가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            UPDATE user_song_play_history
+            SET
+                played_seconds = ?,
+                duration_seconds = COALESCE(?, duration_seconds),
+                ended_at = NOW()
+            WHERE history_id = ?
+        `;
+
+        await db.execute(sql, [
+            playedSeconds,
+            durationSeconds,
+            Number(historyId),
+        ]);
+
+        res.json({
+            success: true,
+        });
+    } catch (error) {
+        console.error("재생 종료 기록 실패:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "재생 종료 기록 실패",
+            error: error.message,
+        });
+    }
+};
+
+// 사용자 재생 기록 조회
+exports.getUserPlayHistory = async (req, res) => {
+    try {
+        const { userNo } = req.params;
+        const limit = Number(req.query.limit) || 30;
+
+        if (!userNo) {
+            return res.status(400).json({
+                success: false,
+                message: "user_no가 필요합니다.",
+            });
+        }
+
+        const sql = `
+            SELECT
+                h.history_id,
+                h.user_no,
+                h.song_id,
+                h.played_seconds,
+                h.duration_seconds,
+                h.started_at,
+                h.ended_at,
+                s.title,
+                a.artist_name,
+                ST_X(s.russell_pt) AS valence,
+                ST_Y(s.russell_pt) AS arousal
+            FROM user_song_play_history h
+            LEFT JOIN songs_pop s ON h.song_id = s.song_id
+            LEFT JOIN artists a ON s.artist_id = a.artist_id
+            WHERE h.user_no = ?
+            ORDER BY h.started_at DESC
+            LIMIT ?
+        `;
+
+        const [rows] = await db.execute(sql, [
+            Number(userNo),
+            limit,
+        ]);
+
+        res.json({
+            success: true,
+            data: rows,
+        });
+    } catch (error) {
+        console.error("사용자 재생 기록 조회 실패:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "사용자 재생 기록 조회 실패",
+            error: error.message,
+        });
+    }
+};
+
+//좋아요곡 조회
+exports.getUserLikedSongs = async (req, res) => {
+    try {
+        const { userNo } = req.params;
+        const limit = Number(req.query.limit) || 6;
+
+        const sql = `
+            SELECT
+                sl.like_id,
+                sl.user_no,
+                sl.song_id,
+                sl.create_at,
+                s.title,
+                a.artist_name,
+                ST_X(s.russell_pt) AS valence,
+                ST_Y(s.russell_pt) AS arousal
+            FROM song_like sl
+            JOIN songs_pop s
+              ON sl.song_id = s.song_id
+            LEFT JOIN artists a
+              ON s.artist_id = a.artist_id
+            WHERE sl.user_no = ?
+            ORDER BY sl.create_at DESC
+            LIMIT ?
+        `;
+
+        const [rows] = await db.execute(sql, [
+            Number(userNo),
+            limit,
+        ]);
+
+        res.json({
+            success: true,
+            data: rows,
+        });
+    } catch (error) {
+        console.error("좋아요 곡 목록 조회 실패:", error);
+        res.status(500).json({
+            success: false,
+            message: "좋아요 곡 목록 조회 실패",
+            error: error.message,
         });
     }
 };

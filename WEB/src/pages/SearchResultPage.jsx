@@ -242,7 +242,7 @@ export default function SearchResultPage() {
                 const songKey = song.song_id ?? `${song.title}-${song.artist_name}`;
                 return !usedSongIds.has(songKey);
             })
-            .slice(0, 5);
+            .slice(0, 20);
 
         songs.forEach((song) => {
             const songKey = song.song_id ?? `${song.title}-${song.artist_name}`;
@@ -289,7 +289,7 @@ export default function SearchResultPage() {
                 },
                 body: JSON.stringify({
                     query,
-                    limit: 20,
+                    limit: 30,
                 }),
             });
 

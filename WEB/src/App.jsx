@@ -5,8 +5,33 @@ import PlayerPage from './pages/PlayerPage';
 import MyPage from './pages/MyPage';
 import TrackListPage from './pages/TrackListPage';
 import LoginPage from "./pages/LoginPage.jsx";
+import {useEffect} from "react";
 
 function App() {
+
+    useEffect(() => {
+        const checkLogin = async () => {
+            const res = await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/api/auth/me`,
+                {
+                    credentials: "include",
+                }
+            );
+
+            if (res.ok) {
+                const data = await res.json();
+
+                localStorage.setItem(
+                    "user",
+                    JSON.stringify(data.user)
+                );
+            }
+        };
+
+        checkLogin();
+    }, []);
+
+
     return (
         <Routes>
             <Route path="/" element={<MainPage />} />
